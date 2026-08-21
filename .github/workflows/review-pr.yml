@@ -55,6 +55,8 @@ on:
         required: true
 jobs:
   review_pr:
+    # '/oz-review' is the old command name, kept as an unadvertised alias so existing
+    # muscle memory and bookmarked comments keep working.
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
       (
