@@ -181,7 +181,7 @@ _Consumer Template_: [consumer-workflows/review-pr.yml](consumer-workflows/revie
 
 **Usage:** Runs automatically when a Pull Request first becomes reviewable: either a non-draft Pull
 Request is opened, or an existing draft Pull Request is marked ready for review. Comment
-`/oz-review` on the Pull Request to request another review.
+`/warp-agent-review` on the Pull Request to request another review.
 
 **Description:** Analyzes the PR diff and provides code review feedback. Each re-review focuses on
 changes since the previous review.
@@ -197,8 +197,8 @@ changes since the previous review.
   improvements.
 - A general summary comment if applicable.
 
-**When to use:** Get immediate feedback on code changes before human review, then run `/oz-review`
-again after addressing feedback or adding commits.
+**When to use:** Get immediate feedback on code changes before human review, then run
+`/warp-agent-review` again after addressing feedback or adding commits.
 
 ### Auto Fix Issue
 
