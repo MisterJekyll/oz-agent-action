@@ -172,7 +172,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ORIGINAL_BRANCH: ${{ github.event.workflow_run.head_branch }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          AGENT_OUTPUT: ${{ steps.agent.outputs.agent_output }}
+          # NOTE (MisterJekyll fork patch): AGENT_OUTPUT used to be set here from
+          # steps.agent.outputs.agent_output, but it is never referenced anywhere
+          # in this script (the "Full Output" <details> block below is empty).
+          # agent_output holds the full, untruncated agent transcript, which can
+          # be hundreds of KB and exceeds Linux's per-env-var execve() limit
+          # (MAX_ARG_STRLEN), making this step fail to even start with
+          # "An error occurred trying to start process '/usr/bin/bash' ...
+          # Argument list too long" before anything is committed/pushed.
+          # Removed since it's dead code; see upstream issue for the real fix.
         run: |
           # Remove temporary files that should not be committed
           rm -f failure_logs.txt
