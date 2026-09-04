@@ -129,11 +129,23 @@ jobs:
           cloud: ${{ inputs.cloud }}
           host: ${{ inputs.host }}
           environment: ${{ inputs.environment }}
+      - name: Save Agent Output
+        # Write the (potentially large, up to 1MB) agent transcript straight into
+        # the generated script file via heredoc, instead of an `env:` var. `env:`
+        # values are passed through execve()'s environment block, which has a
+        # per-repo/OS size limit (Linux MAX_ARG_STRLEN, ~128KB); once exceeded,
+        # the *next* step's process fails to even start with "Argument list too
+        # long" before anything is committed/pushed/commented. Heredoc content
+        # instead becomes part of the script file read by bash, which has no
+        # such limit.
+        run: |
+          cat <<'WARP_AGENT_OUTPUT_EOF' > /tmp/agent_output.txt
+          ${{ steps.agent.outputs.agent_output }}
+          WARP_AGENT_OUTPUT_EOF
       - name: Create PR and Comment
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          AGENT_OUTPUT: ${{ steps.agent.outputs.agent_output }}
         run: |
           # Remove temporary files that should not be committed
           rm -f issue_comments.txt issue_description.txt
@@ -141,7 +153,14 @@ jobs:
           # Check for changes
           if [[ -z $(git status --porcelain) ]]; then
             echo "No changes made by Oz Agent."
-            gh issue comment "$ISSUE_NUMBER" --body "I analyzed the issue but couldn't determine a code change to make. \\n\\n**Agent Output:**\\n$AGENT_OUTPUT"
+            {
+              echo "I analyzed the issue but couldn't determine a code change to make."
+              echo
+              echo "**Agent Output:**"
+              cat /tmp/agent_output.txt
+            } > /tmp/comment_body.txt
+            # --body-file reads from disk (no argv/env size limit), unlike --body "$STRING".
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
             exit 0
           fi
 
@@ -158,15 +177,18 @@ jobs:
           # Create PR
           # Escape title to handle special chars
           TITLE="Fix Issue #$ISSUE_NUMBER: ${{ github.event.issue.title }}"
-          BODY="This PR attempts to fix Issue #$ISSUE_NUMBER.
+          {
+            echo "This PR attempts to fix Issue #$ISSUE_NUMBER."
+            echo
+            echo "**Agent Summary**:"
+            cat /tmp/agent_output.txt
+            echo
+            echo "Closes #$ISSUE_NUMBER"
+          } > /tmp/pr_body.txt
 
-          **Agent Summary**:
-          $AGENT_OUTPUT
-
-          Closes #$ISSUE_NUMBER"
-
-          # Create PR and capture URL
-          PR_URL=$(gh pr create --title "$TITLE" --body "$BODY" --base main --head "$BRANCH_NAME")
+          # Create PR and capture URL (--body-file avoids passing the agent
+          # output as a single, potentially oversized, argv string)
+          PR_URL=$(gh pr create --title "$TITLE" --body-file /tmp/pr_body.txt --base main --head "$BRANCH_NAME")
 
           echo "Created PR: $PR_URL"
 
