@@ -110,7 +110,8 @@ jobs:
                 -   Carefully read the issue description above to understand the problem.${commentsInstructions}
             2.  **Fix**: Implement the changes necessary to resolve the issue.
             3.  **Verify**: Ensure the code is correct and follows existing patterns.
-            4.  **Output**: Do not output the diff. Provide a brief summary of what you changed.
+            4.  **If you commit, push, and open the Pull Request yourself** (instead of leaving the changes uncommitted for this workflow to package into a PR afterwards), its body **MUST** include a GitHub closing keyword referencing this issue, e.g. \`Closes #${issue.number}\` (or \`Fixes #${issue.number}\`/\`Resolves #${issue.number}\`). Do not rely on the issue number merely appearing in the branch name, PR title, or as plain text like "Issue #${issue.number}" elsewhere in the body - none of those auto-close the issue on merge.
+            5.  **Output**: Do not output the diff. Provide a brief summary of what you changed.
             `;
             core.setOutput('prompt', prompt);
       - name: Run Oz Agent
