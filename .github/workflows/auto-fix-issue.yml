@@ -150,6 +150,23 @@ jobs:
           # Remove temporary files that should not be committed
           rm -f issue_comments.txt issue_description.txt
 
+          # NOTE (MisterJekyll fork patch): GitHub's GraphQL API caps comment
+          # and PR bodies at 65536 characters (addComment/createPullRequest).
+          # agent_output.txt can be up to ~1MB (the full, untruncated agent
+          # transcript), which previously made `gh issue comment --body-file`
+          # fail with "GraphQL: Body is too long (maximum is 65536 characters)"
+          # whenever no code change was made (observed in
+          # MisterJekyll/mapsoil-converter run 34130575548). Cap it well below
+          # the limit, leaving room for the surrounding text in both bodies.
+          MAX_AGENT_OUTPUT_CHARS=50000
+          AGENT_OUTPUT_SIZE=$(wc -c < /tmp/agent_output.txt)
+          if [ "$AGENT_OUTPUT_SIZE" -gt "$MAX_AGENT_OUTPUT_CHARS" ]; then
+            head -c "$MAX_AGENT_OUTPUT_CHARS" /tmp/agent_output.txt > /tmp/agent_output_truncated.txt
+            printf '\n\n... (truncated, full output was %s characters - see the workflow run logs for the complete transcript)\n' "$AGENT_OUTPUT_SIZE" >> /tmp/agent_output_truncated.txt
+          else
+            cp /tmp/agent_output.txt /tmp/agent_output_truncated.txt
+          fi
+
           # Check for changes
           if [[ -z $(git status --porcelain) ]]; then
             echo "No changes made by Oz Agent."
@@ -157,7 +174,7 @@ jobs:
               echo "I analyzed the issue but couldn't determine a code change to make."
               echo
               echo "**Agent Output:**"
-              cat /tmp/agent_output.txt
+              cat /tmp/agent_output_truncated.txt
             } > /tmp/comment_body.txt
             # --body-file reads from disk (no argv/env size limit), unlike --body "$STRING".
             gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
@@ -181,7 +198,7 @@ jobs:
             echo "This PR attempts to fix Issue #$ISSUE_NUMBER."
             echo
             echo "**Agent Summary**:"
-            cat /tmp/agent_output.txt
+            cat /tmp/agent_output_truncated.txt
             echo
             echo "Closes #$ISSUE_NUMBER"
           } > /tmp/pr_body.txt
