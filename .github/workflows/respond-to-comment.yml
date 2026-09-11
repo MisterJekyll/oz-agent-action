@@ -212,15 +212,15 @@ jobs:
           fi
       - name: Save Agent Output
         if: success()
-        # Write the (potentially large, up to 1MB) agent transcript straight into
-        # the generated script file via heredoc, instead of an `env:` var. `env:`
-        # values are passed through execve()'s environment block when the next
-        # step's process (here, actions/github-script's node runtime) is spawned;
-        # that block has a per-string OS size limit (Linux MAX_ARG_STRLEN, ~128KB).
-        # Once exceeded, the step fails to even start with "Argument list too
-        # long" before anything is posted. Heredoc content instead becomes part
-        # of the script file read by bash, which has no such limit.
         run: |
+          # Write the (potentially large, up to 1MB) agent transcript straight into
+          # the generated script file via heredoc, instead of an `env:` var. `env:`
+          # values are passed through execve()'s environment block when the next
+          # step's process (here, actions/github-script's node runtime) is spawned;
+          # that block has a per-string OS size limit (Linux MAX_ARG_STRLEN, ~128KB).
+          # Once exceeded, the step fails to even start with "Argument list too
+          # long" before anything is posted. Heredoc content instead becomes part
+          # of the script file read by bash, which has no such limit.
           cat <<'WARP_AGENT_OUTPUT_EOF' > /tmp/agent_output.txt
           ${{ steps.agent.outputs.agent_output }}
           WARP_AGENT_OUTPUT_EOF

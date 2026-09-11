@@ -65,6 +65,17 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
+      - name: Configure Default Git Identity
+        run: |
+          # Guarantees a git identity is present in this checkout even if the
+          # Oz Agent decides to `git commit` (and even open its own PR) itself,
+          # per instruction 4 below, instead of leaving the diff uncommitted for
+          # the "Create PR and Comment" step to package afterwards. Without this,
+          # an agent-initiated commit fails with "Author identity unknown" on the
+          # ephemeral runner, which can also leave a half-created branch behind
+          # that then collides with the fallback branch creation further down.
+          git config --global user.name "Oz Agent"
+          git config --global user.email "agent@warp.dev"
       - name: Construct Prompt
         id: prompt
         uses: actions/github-script@v7
@@ -131,15 +142,14 @@ jobs:
           host: ${{ inputs.host }}
           environment: ${{ inputs.environment }}
       - name: Save Agent Output
-        # Write the (potentially large, up to 1MB) agent transcript straight into
-        # the generated script file via heredoc, instead of an `env:` var. `env:`
-        # values are passed through execve()'s environment block, which has a
-        # per-repo/OS size limit (Linux MAX_ARG_STRLEN, ~128KB); once exceeded,
-        # the *next* step's process fails to even start with "Argument list too
-        # long" before anything is committed/pushed/commented. Heredoc content
-        # instead becomes part of the script file read by bash, which has no
-        # such limit.
         run: |
+          # Write the (potentially large, up to 1MB) agent transcript straight into
+          # a file via heredoc, instead of an `env:` var. `env:` values are passed
+          # through execve()'s environment block, which has a per-repo/OS size
+          # limit (Linux MAX_ARG_STRLEN, ~128KB); once exceeded, the *next* step's
+          # process fails to even start with "Argument list too long" before
+          # anything is committed/pushed/commented. Heredoc content instead
+          # becomes part of the script file read by bash, which has no such limit.
           cat <<'WARP_AGENT_OUTPUT_EOF' > /tmp/agent_output.txt
           ${{ steps.agent.outputs.agent_output }}
           WARP_AGENT_OUTPUT_EOF
@@ -151,14 +161,12 @@ jobs:
           # Remove temporary files that should not be committed
           rm -f issue_comments.txt issue_description.txt
 
-          # NOTE (MisterJekyll fork patch): GitHub's GraphQL API caps comment
-          # and PR bodies at 65536 characters (addComment/createPullRequest).
-          # agent_output.txt can be up to ~1MB (the full, untruncated agent
-          # transcript), which previously made `gh issue comment --body-file`
-          # fail with "GraphQL: Body is too long (maximum is 65536 characters)"
-          # whenever no code change was made (observed in
-          # MisterJekyll/mapsoil-converter run 34130575548). Cap it well below
-          # the limit, leaving room for the surrounding text in both bodies.
+          # GitHub's GraphQL API caps comment and PR bodies at 65536 characters
+          # (addComment/createPullRequest). agent_output.txt can be up to ~1MB
+          # (the full, untruncated agent transcript), which would otherwise make
+          # `gh issue comment --body-file` fail with "GraphQL: Body is too long
+          # (maximum is 65536 characters)" whenever no code change was made. Cap
+          # it well below the limit, leaving room for the surrounding text.
           MAX_AGENT_OUTPUT_CHARS=50000
           AGENT_OUTPUT_SIZE=$(wc -c < /tmp/agent_output.txt)
           if [ "$AGENT_OUTPUT_SIZE" -gt "$MAX_AGENT_OUTPUT_CHARS" ]; then
@@ -184,10 +192,18 @@ jobs:
 
           BRANCH_NAME="fix/issue-$ISSUE_NUMBER"
 
-          git config user.name "Oz Agent"
-          git config user.email "agent@warp.dev"
+          # Identity is already configured globally by the "Configure Default
+          # Git Identity" step above; no need to set it again here.
 
-          git checkout -b "$BRANCH_NAME"
+          # The Oz Agent may have already run `git checkout -b "$BRANCH_NAME"`
+          # itself (per prompt instruction 4) before leaving the diff uncommitted
+          # (e.g. if its own commit/PR attempt failed partway through) - reuse
+          # that branch instead of erroring out on "branch already exists".
+          if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+            git checkout "$BRANCH_NAME"
+          else
+            git checkout -b "$BRANCH_NAME"
+          fi
           git add .
           git commit -m "Fix for Issue #$ISSUE_NUMBER"
           git push origin "$BRANCH_NAME" --force
