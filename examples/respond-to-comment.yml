@@ -179,15 +179,34 @@ jobs:
             echo "No changes to commit."
           fi
 
+      - name: Save Agent Output
+        if: success()
+        run: |
+          # Write the (potentially large, up to 1MB) agent transcript straight into
+          # the generated script file via heredoc, instead of an `env:` var. `env:`
+          # values are passed through execve()'s environment block when the next
+          # step's process (here, actions/github-script's node runtime) is spawned;
+          # that block has a per-string OS size limit (Linux MAX_ARG_STRLEN, ~128KB).
+          # Once exceeded, the step fails to even start with "Argument list too
+          # long" before anything is posted. Heredoc content instead becomes part
+          # of the script file read by bash, which has no such limit.
+          cat <<'WARP_AGENT_OUTPUT_EOF' > /tmp/agent_output.txt
+          ${{ steps.agent.outputs.agent_output }}
+          WARP_AGENT_OUTPUT_EOF
+
       - name: Reply to Comment
         if: success()
         uses: actions/github-script@v7
-        env:
-          AGENT_OUTPUT: ${{ steps.agent.outputs.agent_output }}
         with:
           github-token: ${{ github.token }}
           script: |
-            const raw = process.env.AGENT_OUTPUT || '';
+            const fs = require('fs');
+            let raw = '';
+            try {
+              raw = fs.readFileSync('/tmp/agent_output.txt', 'utf8');
+            } catch (e) {
+              core.warning(`Could not read saved agent output: ${e.message}`);
+            }
 
             // Walk JSONL lines and capture the last agent text message, if any.
             let lastText = '';
